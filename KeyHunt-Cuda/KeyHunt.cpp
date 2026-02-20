@@ -26,7 +26,8 @@ Point _2Gn;
 
 KeyHunt::KeyHunt(const std::string& inputFile, int compMode, int searchMode, int coinType, bool useGpu,
 	const std::string& outputFile, bool useSSE, uint32_t maxFound, uint64_t rKey,
-	const std::string& rangeStart, const std::string& rangeEnd, bool& should_exit)
+	const std::string& rangeStart, const std::string& rangeEnd,
+	int lambdaCount, bool adaptiveMode, int hybridThreshold, bool puzzle71Mode, bool& should_exit)
 {
 	this->compMode = compMode;
 	this->useGpu = useGpu;
@@ -43,6 +44,12 @@ KeyHunt::KeyHunt(const std::string& inputFile, int compMode, int searchMode, int
 	this->rangeDiff2.Set(&this->rangeEnd);
 	this->rangeDiff2.Sub(&this->rangeStart);
 	this->lastrKey = 0;
+	
+	// *** НОВЫЕ ПАРАМЕТРЫ ***
+	this->lambdaCount = lambdaCount;
+	this->adaptiveMode = adaptiveMode;
+	this->hybridThreshold = hybridThreshold;
+	this->puzzle71Mode = puzzle71Mode;
 
 	secp = new Secp256K1();
 	secp->Init();
@@ -130,9 +137,10 @@ KeyHunt::KeyHunt(const std::string& inputFile, int compMode, int searchMode, int
 
 // ----------------------------------------------------------------------------
 
-KeyHunt::KeyHunt(const std::vector< std::vector<unsigned char>>& hashORxpoints, int compMode, int searchMode, int coinType,
+KeyHunt::KeyHunt(const std::vector<std::vector<unsigned char>>& hashORxpoints, int compMode, int searchMode, int coinType,
 	bool useGpu, const std::string& outputFile, bool useSSE, uint32_t maxFound, uint64_t rKey,
-	const std::string& rangeStart, const std::string& rangeEnd, bool& should_exit)
+	const std::string& rangeStart, const std::string& rangeEnd,
+	int lambdaCount, bool adaptiveMode, int hybridThreshold, bool puzzle71Mode, bool& should_exit)
 {
 	this->compMode = compMode;
 	this->useGpu = useGpu;
@@ -148,6 +156,12 @@ KeyHunt::KeyHunt(const std::vector< std::vector<unsigned char>>& hashORxpoints, 
 	this->rangeDiff2.Set(&this->rangeEnd);
 	this->rangeDiff2.Sub(&this->rangeStart);
 	this->targetCounter = 1;
+	
+	// *** НОВЫЕ ПАРАМЕТРЫ ***
+	this->lambdaCount = lambdaCount;
+	this->adaptiveMode = adaptiveMode;
+	this->hybridThreshold = hybridThreshold;
+	this->puzzle71Mode = puzzle71Mode;
 
 	secp = new Secp256K1();
 	secp->Init();
@@ -243,6 +257,17 @@ void KeyHunt::InitGenratorTable()
 	if (rKey > 0) {
 		printf("Base Key     : Randomly changes on every %llu Mkeys\n", rKey);
 	}
+	
+	// *** НОВЫЙ ВЫВОД ***
+	if(puzzle71Mode) {
+		printf("Puzzle 71    : ENABLED (target: 1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU)\n");
+	}
+	printf("Lambda Count : %d\n", lambdaCount);
+	printf("Adaptive Mode: %s\n", adaptiveMode ? "YES" : "NO");
+	if(adaptiveMode) {
+		printf("Hybrid Thresh: %d%%\n", hybridThreshold);
+	}
+	
 	printf("Global start : %s (%d bit)\n", this->rangeStart.GetBase16().c_str(), this->rangeStart.GetBitLength());
 	printf("Global end   : %s (%d bit)\n", this->rangeEnd.GetBase16().c_str(), this->rangeEnd.GetBitLength());
 	printf("Global range : %s (%d bit)\n", this->rangeDiff2.GetBase16().c_str(), this->rangeDiff2.GetBitLength());
@@ -889,8 +914,7 @@ void KeyHunt::getGPUStartingKeys(Int & tRangeStart, Int & tRangeEnd, int groupSi
 	tRangeDiff.Set(&tRangeEnd);
 	tRangeDiff.Sub(&tRangeStart);
 	tRangeDiff.Div(&tThreads);
-
-	int rangeShowThreasold = 3;
+		int rangeShowThreasold = 3;
 	int rangeShowCounter = 0;
 
 	for (int i = 0; i < nbThread; i++) {
@@ -994,10 +1018,7 @@ void KeyHunt::FindKeyGPU(TH_PARAM * ph)
 			ok = g->LaunchSEARCH_MODE_MX(found, false);
 			for (int i = 0; i < (int)found.size() && !endOfSearch; i++) {
 				ITEM it = found[i];
-				//Point pk;
-				//memcpy((uint32_t*)pk.x.bits, (uint32_t*)it.hash, 8);
-				//string addr = secp->GetAddress(it.mode, pk);
-				if (checkPrivKeyX(/*addr,*/ keys[it.thId], it.incr, it.mode)) {
+				if (checkPrivKeyX(keys[it.thId], it.incr, it.mode)) {
 					nbFoundKey++;
 				}
 			}
@@ -1024,10 +1045,7 @@ void KeyHunt::FindKeyGPU(TH_PARAM * ph)
 			ok = g->LaunchSEARCH_MODE_SX(found, false);
 			for (int i = 0; i < (int)found.size() && !endOfSearch; i++) {
 				ITEM it = found[i];
-				//Point pk;
-				//memcpy((uint32_t*)pk.x.bits, (uint32_t*)it.hash, 8);
-				//string addr = secp->GetAddress(it.mode, pk);
-				if (checkPrivKeyX(/*addr,*/ keys[it.thId], it.incr, it.mode)) {
+				if (checkPrivKeyX(keys[it.thId], it.incr, it.mode)) {
 					nbFoundKey++;
 				}
 			}
@@ -1247,9 +1265,6 @@ void KeyHunt::Search(int nbThread, std::vector<int> gpuId, std::vector<int> grid
 		int completedBits = ICount.GetBitLength();
 		if (rKey <= 0) {
 			completedPerc = CalcPercantage(ICount, rangeStart, rangeDiff2);
-			//ICount.Mult(&p100);
-			//ICount.Div(&this->rangeDiff2);
-			//completedPerc = std::stoi(ICount.GetBase10());
 		}
 
 		t1 = Timer::get_tick();
@@ -1434,22 +1449,4 @@ char* KeyHunt::toTimeStr(int sec, char* timeStr)
 }
 
 // ----------------------------------------------------------------------------
-
-//#include <gmp.h>
-//#include <gmpxx.h>
-// ((input - min) * 100) / (max - min)
-//double KeyHunt::GetPercantage(uint64_t v)
-//{
-//	//Int val(v);
-//	//mpz_class x(val.GetBase16().c_str(), 16);
-//	//mpz_class r(rangeStart.GetBase16().c_str(), 16);
-//	//x = x - mpz_class(rangeEnd.GetBase16().c_str(), 16);
-//	//x = x * 100;
-//	//mpf_class y(x);
-//	//y = y / mpf_class(r);
-//	return 0;// y.get_d();
-//}
-
-
-
-
+	

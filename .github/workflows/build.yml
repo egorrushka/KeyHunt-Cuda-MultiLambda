@@ -5,78 +5,63 @@ on:
     branches: [ main, feature/multi-lambda ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:  # позволяет запускать вручную
+  workflow_dispatch:
 
 jobs:
   build-windows:
-    runs-on: windows-latest
+    runs-on: windows-2019  # Используем более старую, но стабильную версию Windows
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
 
-    - name: Setup CUDA 10.2
-      uses: Jimver/cuda-toolkit@v0.2.11
-      with:
-        cuda: '10.2.89'
-        method: 'network'
-        sub-packages: '["nvcc", "cudart", "cublas", "cudnn"]'
-        use-github-cache: true
+    - name: Add msbuild to PATH
+      uses: microsoft/setup-msbuild@v1.1
 
-    - name: Verify CUDA installation
+    - name: Setup CUDA 10.2 (manual download)
+      shell: powershell
+      run: |
+        # Скачиваем CUDA 10.2 напрямую с NVIDIA
+        $url = "https://developer.download.nvidia.com/compute/cuda/10.2/Prod/local_installers/cuda_10.2.89_441.22_win10.exe"
+        $output = "cuda_10.2.89_441.22_win10.exe"
+        Invoke-WebRequest -Uri $url -OutFile $output
+        Write-Host "CUDA downloaded"
+
+        # Распаковываем без установки драйвера
+        Start-Process -FilePath $output -ArgumentList "-s nvcc_10.2 cublas_dev_10.2 cudart_10.2" -Wait -NoNewWindow
+        Write-Host "CUDA extracted"
+
+        # Добавляем в PATH
+        $env:PATH = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.2\bin;$env:PATH"
+        [Environment]::SetEnvironmentVariable("PATH", $env:PATH, [EnvironmentVariableTarget]::Machine)
+        [Environment]::SetEnvironmentVariable("CUDA_PATH", "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.2", [EnvironmentVariableTarget]::Machine)
+
+    - name: Verify CUDA
       run: |
         nvcc --version
         echo "CUDA_PATH: $env:CUDA_PATH"
 
-    - name: Setup MSVC (Visual Studio 2022)
-      uses: ilammy/msvc-dev-cmd@v1
-      with:
-        arch: x64
+    - name: Install Visual Studio components
+      run: |
+        choco install visualstudio2019buildtools --package-parameters "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64"
+        choco install vswhere
 
     - name: Configure with CMake
       run: |
         mkdir build
         cd build
-        cmake .. -G "Visual Studio 17 2022" -A x64 `
+        cmake .. -G "Visual Studio 16 2019" -A x64 `
           -DCMAKE_CUDA_COMPILER="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v10.2/bin/nvcc.exe" `
           -DCMAKE_CUDA_ARCHITECTURES="86" `
-          -DCMAKE_BUILD_TYPE=Release `
-          -DCMAKE_VERBOSE_MAKEFILE=ON
+          -DCMAKE_BUILD_TYPE=Release
 
     - name: Build
       run: |
         cd build
         cmake --build . --config Release --target ALL_BUILD -j 2
 
-    - name: List build output
-      run: |
-        dir build\Release
-        echo "=== Build completed ==="
-
     - name: Upload executable
       uses: actions/upload-artifact@v4
       with:
         name: KeyHunt-Cuda-MultiLambda-EXE
-        path: |
-          build/Release/*.exe
-          build/Release/*.dll
-        if-no-files-found: error
-        retention-days: 90
-
-    - name: Create release package
-      run: |
-        mkdir package
-        copy build\Release\*.exe package\
-        copy build\Release\*.dll package\ 2>nul || echo "No DLLs found"
-        echo "Multi-Lambda version with 4 endomorphisms" > package\README.txt
-        echo "Built for Puzzle 71" >> package\README.txt
-        echo "Date: %date% %time%" >> package\README.txt
-        7z a KeyHunt-Cuda-MultiLambda.zip .\package\*
-
-    - name: Upload package
-      uses: actions/upload-artifact@v4
-      with:
-        name: KeyHunt-Cuda-MultiLambda-Package
-        path: KeyHunt-Cuda-MultiLambda.zip
+        path: build/Release/*.exe
         retention-days: 90

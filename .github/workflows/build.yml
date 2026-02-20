@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-linux:
-    runs-on: ubuntu-20.04  # ВАЖНО: именно 20.04, не 22.04!
+    runs-on: ubuntu-20.04 
     steps:
     - name: Checkout code
       uses: actions/checkout@v3

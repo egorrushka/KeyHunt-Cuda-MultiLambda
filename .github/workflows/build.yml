@@ -8,60 +8,52 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-windows:
-    runs-on: windows-2019  # Используем более старую, но стабильную версию Windows
+  build-linux:
+    runs-on: ubuntu-20.04
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Add msbuild to PATH
-      uses: microsoft/setup-msbuild@v1.1
-
-    - name: Setup CUDA 10.2 (manual download)
-      shell: powershell
+    - name: Install CUDA 10.2
       run: |
-        # Скачиваем CUDA 10.2 напрямую с NVIDIA
-        $url = "https://developer.download.nvidia.com/compute/cuda/10.2/Prod/local_installers/cuda_10.2.89_441.22_win10.exe"
-        $output = "cuda_10.2.89_441.22_win10.exe"
-        Invoke-WebRequest -Uri $url -OutFile $output
-        Write-Host "CUDA downloaded"
+        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin
+        sudo mv cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600
+        sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/3bf863cc.pub
+        sudo add-apt-repository "deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/ /"
+        sudo apt-get update
+        sudo apt-get install -y cuda-10-2
 
-        # Распаковываем без установки драйвера
-        Start-Process -FilePath $output -ArgumentList "-s nvcc_10.2 cublas_dev_10.2 cudart_10.2" -Wait -NoNewWindow
-        Write-Host "CUDA extracted"
-
-        # Добавляем в PATH
-        $env:PATH = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.2\bin;$env:PATH"
-        [Environment]::SetEnvironmentVariable("PATH", $env:PATH, [EnvironmentVariableTarget]::Machine)
-        [Environment]::SetEnvironmentVariable("CUDA_PATH", "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.2", [EnvironmentVariableTarget]::Machine)
+    - name: Set CUDA environment
+      run: |
+        echo "/usr/local/cuda-10.2/bin" >> $GITHUB_PATH
+        echo "CUDA_PATH=/usr/local/cuda-10.2" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=/usr/local/cuda-10.2/lib64:$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
     - name: Verify CUDA
       run: |
         nvcc --version
-        echo "CUDA_PATH: $env:CUDA_PATH"
+        which nvcc
 
-    - name: Install Visual Studio components
+    - name: Install dependencies
       run: |
-        choco install visualstudio2019buildtools --package-parameters "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64"
-        choco install vswhere
+        sudo apt-get install -y build-essential cmake libgmp-dev
 
     - name: Configure with CMake
       run: |
-        mkdir build
+        mkdir -p build
         cd build
-        cmake .. -G "Visual Studio 16 2019" -A x64 `
-          -DCMAKE_CUDA_COMPILER="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v10.2/bin/nvcc.exe" `
-          -DCMAKE_CUDA_ARCHITECTURES="86" `
-          -DCMAKE_BUILD_TYPE=Release
+        cmake .. -DCMAKE_BUILD_TYPE=Release \
+                 -DCMAKE_CUDA_COMPILER=/usr/local/cuda-10.2/bin/nvcc \
+                 -DCMAKE_CUDA_ARCHITECTURES="86"
 
     - name: Build
       run: |
         cd build
-        cmake --build . --config Release --target ALL_BUILD -j 2
+        make -j2
 
     - name: Upload executable
       uses: actions/upload-artifact@v4
       with:
-        name: KeyHunt-Cuda-MultiLambda-EXE
-        path: build/Release/*.exe
+        name: KeyHunt-Cuda-MultiLambda-Linux
+        path: build/KeyHunt-Cuda
         retention-days: 90

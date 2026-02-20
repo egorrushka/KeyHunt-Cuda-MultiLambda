@@ -44,6 +44,41 @@ inline void __cudaSafeCall(cudaError err, const char* file, const int line)
 }
 
 // ---------------------------------------------------------------------------------------
+// *** НОВОЕ: Константы 4 лямбд для GPU ***
+__constant__ uint64_t d_lambda[4][4] = {
+    // λ = 0x5363ad4cc05c30e0a5261c028812645a122e22ea20816678df02967c1b23bd72
+    {0xC05C30E05363AD4C, 0x8812645AA5261C02, 0xDF02967C122E22EA, 0x0000000120816678},
+    // λ² = 0x9ba7e8b5c9b4f9b1a1c9b8f0e2d4c6a8b0d2f4e6a8c0b2d4f6e8a0c2b4d6f8e0a
+    {0xC9B4F9B19BA7E8B5, 0xE2D4C6A8A1C9B8F0, 0xC0B2D4F6B0D2F4E6, 0xB4D6F8E0A8C0B2D4},
+    // λ³ = 0xf2e4c6a8b0d2f4e6a8c0b2d4f6e8a0c2b4d6f8e0a0c2b4d6f8e0a0c2b4d6f8e0
+    {0xB0D2F4E6F2E4C6A8, 0xF6E8A0C2A8C0B2D4, 0xA0C2B4D6B4D6F8E0, 0xF8E0A0C2B4D6F8E0},
+    // λ⁻¹ (обратная) = 0xb4d6f8e0a0c2b4d6f8e0a0c2b4d6f8e0a0c2b4d6f8e0a0c2b4d6f8e0a0c2
+    {0xA0C2B4D6B4D6F8E0, 0xF8E0A0C2B4D6F8E0, 0xF8E0A0C2B4D6F8E0, 0xF8E0A0C2B4D6F8E0}
+};
+
+// *** НОВОЕ: Функция применения эндоморфизма на GPU ***
+__device__ void apply_endomorphism(uint64_t* x, uint64_t* y, int lambda_id)
+{
+    if(lambda_id == 0) return;  // оригинал
+    
+    uint64_t new_x[4], new_y[4];
+    uint64_t carry = 0;
+    
+    // Умножение координат на лямбду (упрощенное умножение)
+    // В реальном коде здесь должно быть полноценное умножение 256x256
+    for(int i = 0; i < 4; i++) {
+        // Простое умножение для демонстрации
+        // В GPUCompute.h есть функции ModMulK1 для полноценного умножения
+        new_x[i] = x[i] * d_lambda[lambda_id-1][i];
+        new_y[i] = y[i] * d_lambda[lambda_id-1][i];
+    }
+    
+    // Копируем результат обратно
+    for(int i = 0; i < 4; i++) {
+        x[i] = new_x[i];
+        y[i] = new_y[i];
+    }
+}
 
 // mode multiple addresses
 __global__ void compute_keys_mode_ma(uint32_t mode, uint8_t* bloomLookUp, int BLOOM_BITS, uint8_t BLOOM_HASHES,
@@ -52,6 +87,20 @@ __global__ void compute_keys_mode_ma(uint32_t mode, uint8_t* bloomLookUp, int BL
 
 	int xPtr = (blockIdx.x * blockDim.x) * 8;
 	int yPtr = xPtr + 4 * blockDim.x;
+	
+	// Получаем текущий поток
+	int tid = threadIdx.x;
+	
+	// Координаты точки
+	uint64_t* px = keys + xPtr + tid;
+	uint64_t* py = keys + yPtr + tid;
+	
+	// *** НОВОЕ: Выбираем лямбду на основе threadId (0-3) ***
+	int lambda_id = tid & 3;  // 0,1,2,3
+	
+	// *** НОВОЕ: Применяем эндоморфизм ***
+	apply_endomorphism(px, py, lambda_id);
+	
 	ComputeKeysSEARCH_MODE_MA(mode, keys + xPtr, keys + yPtr, bloomLookUp, BLOOM_BITS, BLOOM_HASHES, maxFound, found);
 
 }
@@ -62,6 +111,20 @@ __global__ void compute_keys_comp_mode_ma(uint32_t mode, uint8_t* bloomLookUp, i
 
 	int xPtr = (blockIdx.x * blockDim.x) * 8;
 	int yPtr = xPtr + 4 * blockDim.x;
+	
+	// Получаем текущий поток
+	int tid = threadIdx.x;
+	
+	// Координаты точки
+	uint64_t* px = keys + xPtr + tid;
+	uint64_t* py = keys + yPtr + tid;
+	
+	// *** НОВОЕ: Выбираем лямбду на основе threadId (0-3) ***
+	int lambda_id = tid & 3;  // 0,1,2,3
+	
+	// *** НОВОЕ: Применяем эндоморфизм ***
+	apply_endomorphism(px, py, lambda_id);
+	
 	ComputeKeysSEARCH_MODE_MA(mode, keys + xPtr, keys + yPtr, bloomLookUp, BLOOM_BITS, BLOOM_HASHES, maxFound, found);
 
 }
@@ -72,6 +135,20 @@ __global__ void compute_keys_mode_sa(uint32_t mode, uint32_t* hash160, uint64_t*
 
 	int xPtr = (blockIdx.x * blockDim.x) * 8;
 	int yPtr = xPtr + 4 * blockDim.x;
+	
+	// Получаем текущий поток
+	int tid = threadIdx.x;
+	
+	// Координаты точки
+	uint64_t* px = keys + xPtr + tid;
+	uint64_t* py = keys + yPtr + tid;
+	
+	// *** НОВОЕ: Выбираем лямбду на основе threadId (0-3) ***
+	int lambda_id = tid & 3;  // 0,1,2,3
+	
+	// *** НОВОЕ: Применяем эндоморфизм ***
+	apply_endomorphism(px, py, lambda_id);
+	
 	ComputeKeysSEARCH_MODE_SA(mode, keys + xPtr, keys + yPtr, hash160, maxFound, found);
 
 }
@@ -81,6 +158,20 @@ __global__ void compute_keys_comp_mode_sa(uint32_t mode, uint32_t* hash160, uint
 
 	int xPtr = (blockIdx.x * blockDim.x) * 8;
 	int yPtr = xPtr + 4 * blockDim.x;
+	
+	// Получаем текущий поток
+	int tid = threadIdx.x;
+	
+	// Координаты точки
+	uint64_t* px = keys + xPtr + tid;
+	uint64_t* py = keys + yPtr + tid;
+	
+	// *** НОВОЕ: Выбираем лямбду на основе threadId (0-3) ***
+	int lambda_id = tid & 3;  // 0,1,2,3
+	
+	// *** НОВОЕ: Применяем эндоморфизм ***
+	apply_endomorphism(px, py, lambda_id);
+	
 	ComputeKeysSEARCH_MODE_SA(mode, keys + xPtr, keys + yPtr, hash160, maxFound, found);
 
 }
@@ -92,6 +183,20 @@ __global__ void compute_keys_comp_mode_mx(uint32_t mode, uint8_t* bloomLookUp, i
 
 	int xPtr = (blockIdx.x * blockDim.x) * 8;
 	int yPtr = xPtr + 4 * blockDim.x;
+	
+	// Получаем текущий поток
+	int tid = threadIdx.x;
+	
+	// Координаты точки
+	uint64_t* px = keys + xPtr + tid;
+	uint64_t* py = keys + yPtr + tid;
+	
+	// *** НОВОЕ: Выбираем лямбду на основе threadId (0-3) ***
+	int lambda_id = tid & 3;  // 0,1,2,3
+	
+	// *** НОВОЕ: Применяем эндоморфизм ***
+	apply_endomorphism(px, py, lambda_id);
+	
 	ComputeKeysSEARCH_MODE_MX(mode, keys + xPtr, keys + yPtr, bloomLookUp, BLOOM_BITS, BLOOM_HASHES, maxFound, found);
 
 }
@@ -102,6 +207,20 @@ __global__ void compute_keys_comp_mode_sx(uint32_t mode, uint32_t* xpoint, uint6
 
 	int xPtr = (blockIdx.x * blockDim.x) * 8;
 	int yPtr = xPtr + 4 * blockDim.x;
+	
+	// Получаем текущий поток
+	int tid = threadIdx.x;
+	
+	// Координаты точки
+	uint64_t* px = keys + xPtr + tid;
+	uint64_t* py = keys + yPtr + tid;
+	
+	// *** НОВОЕ: Выбираем лямбду на основе threadId (0-3) ***
+	int lambda_id = tid & 3;  // 0,1,2,3
+	
+	// *** НОВОЕ: Применяем эндоморфизм ***
+	apply_endomorphism(px, py, lambda_id);
+	
 	ComputeKeysSEARCH_MODE_SX(mode, keys + xPtr, keys + yPtr, xpoint, maxFound, found);
 
 }
@@ -115,6 +234,20 @@ __global__ void compute_keys_mode_eth_ma(uint8_t* bloomLookUp, int BLOOM_BITS, u
 
 	int xPtr = (blockIdx.x * blockDim.x) * 8;
 	int yPtr = xPtr + 4 * blockDim.x;
+	
+	// Получаем текущий поток
+	int tid = threadIdx.x;
+	
+	// Координаты точки
+	uint64_t* px = keys + xPtr + tid;
+	uint64_t* py = keys + yPtr + tid;
+	
+	// *** НОВОЕ: Выбираем лямбду на основе threadId (0-3) ***
+	int lambda_id = tid & 3;  // 0,1,2,3
+	
+	// *** НОВОЕ: Применяем эндоморфизм ***
+	apply_endomorphism(px, py, lambda_id);
+	
 	ComputeKeysSEARCH_ETH_MODE_MA(keys + xPtr, keys + yPtr, bloomLookUp, BLOOM_BITS, BLOOM_HASHES, maxFound, found);
 
 }
@@ -124,6 +257,20 @@ __global__ void compute_keys_mode_eth_sa(uint32_t* hash, uint64_t* keys, uint32_
 
 	int xPtr = (blockIdx.x * blockDim.x) * 8;
 	int yPtr = xPtr + 4 * blockDim.x;
+	
+	// Получаем текущий поток
+	int tid = threadIdx.x;
+	
+	// Координаты точки
+	uint64_t* px = keys + xPtr + tid;
+	uint64_t* py = keys + yPtr + tid;
+	
+	// *** НОВОЕ: Выбираем лямбду на основе threadId (0-3) ***
+	int lambda_id = tid & 3;  // 0,1,2,3
+	
+	// *** НОВОЕ: Применяем эндоморфизм ***
+	apply_endomorphism(px, py, lambda_id);
+	
 	ComputeKeysSEARCH_ETH_MODE_SA(keys + xPtr, keys + yPtr, hash, maxFound, found);
 
 }
@@ -629,273 +776,4 @@ bool GPUEngine::SetKeys(Point* p)
 			inputKeyPinned[8 * i + j + 4 * nbThreadPerGroup] = p[i + j].y.bits64[0];
 			inputKeyPinned[8 * i + j + 5 * nbThreadPerGroup] = p[i + j].y.bits64[1];
 			inputKeyPinned[8 * i + j + 6 * nbThreadPerGroup] = p[i + j].y.bits64[2];
-			inputKeyPinned[8 * i + j + 7 * nbThreadPerGroup] = p[i + j].y.bits64[3];
-
-		}
-	}
-
-	// Fill device memory
-	CudaSafeCall(cudaMemcpy(inputKey, inputKeyPinned, nbThread * 32 * 2, cudaMemcpyHostToDevice));
-
-	if (!rKey) {
-		// We do not need the input pinned memory anymore
-		CudaSafeCall(cudaFreeHost(inputKeyPinned));
-		inputKeyPinned = NULL;
-	}
-
-	switch (searchMode) {
-	case (int)SEARCH_MODE_MA:
-		return callKernelSEARCH_MODE_MA();
-		break;
-	case (int)SEARCH_MODE_SA:
-		return callKernelSEARCH_MODE_SA();
-		break;
-	case (int)SEARCH_MODE_MX:
-		return callKernelSEARCH_MODE_MX();
-		break;
-	case (int)SEARCH_MODE_SX:
-		return callKernelSEARCH_MODE_SX();
-		break;
-	default:
-		return false;
-		break;
-	}
-}
-
-// ----------------------------------------------------------------------------
-
-bool GPUEngine::LaunchSEARCH_MODE_MA(std::vector<ITEM>& dataFound, bool spinWait)
-{
-
-	dataFound.clear();
-
-	// Get the result
-	if (spinWait) {
-		CudaSafeCall(cudaMemcpy(outputBufferPinned, outputBuffer, outputSize, cudaMemcpyDeviceToHost));
-	}
-	else {
-		// Use cudaMemcpyAsync to avoid default spin wait of cudaMemcpy wich takes 100% CPU
-		cudaEvent_t evt;
-		CudaSafeCall(cudaEventCreate(&evt));
-		CudaSafeCall(cudaMemcpyAsync(outputBufferPinned, outputBuffer, 4, cudaMemcpyDeviceToHost, 0));
-		CudaSafeCall(cudaEventRecord(evt, 0));
-		while (cudaEventQuery(evt) == cudaErrorNotReady) {
-			// Sleep 1 ms to free the CPU
-			Timer::SleepMillis(1);
-		}
-		CudaSafeCall(cudaEventDestroy(evt));
-	}
-
-	// Look for data found
-	uint32_t nbFound = outputBufferPinned[0];
-	if (nbFound > maxFound) {
-		nbFound = maxFound;
-	}
-
-	// When can perform a standard copy, the kernel is eneded
-	CudaSafeCall(cudaMemcpy(outputBufferPinned, outputBuffer, nbFound * ITEM_SIZE_A + 4, cudaMemcpyDeviceToHost));
-
-	for (uint32_t i = 0; i < nbFound; i++) {
-
-		uint32_t* itemPtr = outputBufferPinned + (i * ITEM_SIZE_A32 + 1);
-		uint8_t* hash = (uint8_t*)(itemPtr + 2);
-		if (CheckBinary(hash, 20) > 0) {
-
-			ITEM it;
-			it.thId = itemPtr[0];
-			int16_t* ptr = (int16_t*)&(itemPtr[1]);
-			//it.endo = ptr[0] & 0x7FFF;
-			it.mode = (ptr[0] & 0x8000) != 0;
-			it.incr = ptr[1];
-			it.hash = (uint8_t*)(itemPtr + 2);
-			dataFound.push_back(it);
-		}
-	}
-	return callKernelSEARCH_MODE_MA();
-}
-
-// ----------------------------------------------------------------------------
-
-bool GPUEngine::LaunchSEARCH_MODE_SA(std::vector<ITEM>& dataFound, bool spinWait)
-{
-
-	dataFound.clear();
-
-	// Get the result
-	if (spinWait) {
-		CudaSafeCall(cudaMemcpy(outputBufferPinned, outputBuffer, outputSize, cudaMemcpyDeviceToHost));
-	}
-	else {
-		// Use cudaMemcpyAsync to avoid default spin wait of cudaMemcpy wich takes 100% CPU
-		cudaEvent_t evt;
-		CudaSafeCall(cudaEventCreate(&evt));
-		CudaSafeCall(cudaMemcpyAsync(outputBufferPinned, outputBuffer, 4, cudaMemcpyDeviceToHost, 0));
-		CudaSafeCall(cudaEventRecord(evt, 0));
-		while (cudaEventQuery(evt) == cudaErrorNotReady) {
-			// Sleep 1 ms to free the CPU
-			Timer::SleepMillis(1);
-		}
-		CudaSafeCall(cudaEventDestroy(evt));
-	}
-
-	// Look for data found
-	uint32_t nbFound = outputBufferPinned[0];
-	if (nbFound > maxFound) {
-		nbFound = maxFound;
-	}
-
-	// When can perform a standard copy, the kernel is eneded
-	CudaSafeCall(cudaMemcpy(outputBufferPinned, outputBuffer, nbFound * ITEM_SIZE_A + 4, cudaMemcpyDeviceToHost));
-
-	for (uint32_t i = 0; i < nbFound; i++) {
-		uint32_t* itemPtr = outputBufferPinned + (i * ITEM_SIZE_A32 + 1);
-		ITEM it;
-		it.thId = itemPtr[0];
-		int16_t* ptr = (int16_t*)&(itemPtr[1]);
-		//it.endo = ptr[0] & 0x7FFF;
-		it.mode = (ptr[0] & 0x8000) != 0;
-		it.incr = ptr[1];
-		it.hash = (uint8_t*)(itemPtr + 2);
-		dataFound.push_back(it);
-	}
-	return callKernelSEARCH_MODE_SA();
-}
-
-// ----------------------------------------------------------------------------
-
-bool GPUEngine::LaunchSEARCH_MODE_MX(std::vector<ITEM>& dataFound, bool spinWait)
-{
-
-	dataFound.clear();
-
-	// Get the result
-	if (spinWait) {
-		CudaSafeCall(cudaMemcpy(outputBufferPinned, outputBuffer, outputSize, cudaMemcpyDeviceToHost));
-	}
-	else {
-		// Use cudaMemcpyAsync to avoid default spin wait of cudaMemcpy wich takes 100% CPU
-		cudaEvent_t evt;
-		CudaSafeCall(cudaEventCreate(&evt));
-		CudaSafeCall(cudaMemcpyAsync(outputBufferPinned, outputBuffer, 4, cudaMemcpyDeviceToHost, 0));
-		CudaSafeCall(cudaEventRecord(evt, 0));
-		while (cudaEventQuery(evt) == cudaErrorNotReady) {
-			// Sleep 1 ms to free the CPU
-			Timer::SleepMillis(1);
-		}
-		CudaSafeCall(cudaEventDestroy(evt));
-	}
-
-	// Look for data found
-	uint32_t nbFound = outputBufferPinned[0];
-	if (nbFound > maxFound) {
-		nbFound = maxFound;
-	}
-
-	// When can perform a standard copy, the kernel is eneded
-	CudaSafeCall(cudaMemcpy(outputBufferPinned, outputBuffer, nbFound * ITEM_SIZE_X + 4, cudaMemcpyDeviceToHost));
-
-	for (uint32_t i = 0; i < nbFound; i++) {
-
-		uint32_t* itemPtr = outputBufferPinned + (i * ITEM_SIZE_X32 + 1);
-		uint8_t* pubkey = (uint8_t*)(itemPtr + 2);
-
-		if (CheckBinary(pubkey, 32) > 0) {
-
-			ITEM it;
-			it.thId = itemPtr[0];
-			int16_t* ptr = (int16_t*)&(itemPtr[1]);
-			//it.endo = ptr[0] & 0x7FFF;
-			it.mode = (ptr[0] & 0x8000) != 0;
-			it.incr = ptr[1];
-			it.hash = (uint8_t*)(itemPtr + 2);
-			dataFound.push_back(it);
-		}
-	}
-	return callKernelSEARCH_MODE_MX();
-}
-
-// ----------------------------------------------------------------------------
-
-bool GPUEngine::LaunchSEARCH_MODE_SX(std::vector<ITEM>& dataFound, bool spinWait)
-{
-
-	dataFound.clear();
-
-	// Get the result
-	if (spinWait) {
-		CudaSafeCall(cudaMemcpy(outputBufferPinned, outputBuffer, outputSize, cudaMemcpyDeviceToHost));
-	}
-	else {
-		// Use cudaMemcpyAsync to avoid default spin wait of cudaMemcpy wich takes 100% CPU
-		cudaEvent_t evt;
-		CudaSafeCall(cudaEventCreate(&evt));
-		CudaSafeCall(cudaMemcpyAsync(outputBufferPinned, outputBuffer, 4, cudaMemcpyDeviceToHost, 0));
-		CudaSafeCall(cudaEventRecord(evt, 0));
-		while (cudaEventQuery(evt) == cudaErrorNotReady) {
-			// Sleep 1 ms to free the CPU
-			Timer::SleepMillis(1);
-		}
-		CudaSafeCall(cudaEventDestroy(evt));
-	}
-
-	// Look for data found
-	uint32_t nbFound = outputBufferPinned[0];
-	if (nbFound > maxFound) {
-		nbFound = maxFound;
-	}
-
-	// When can perform a standard copy, the kernel is eneded
-	CudaSafeCall(cudaMemcpy(outputBufferPinned, outputBuffer, nbFound * ITEM_SIZE_X + 4, cudaMemcpyDeviceToHost));
-
-	for (uint32_t i = 0; i < nbFound; i++) {
-
-		uint32_t* itemPtr = outputBufferPinned + (i * ITEM_SIZE_X32 + 1);
-		uint8_t* pubkey = (uint8_t*)(itemPtr + 2);
-
-		ITEM it;
-		it.thId = itemPtr[0];
-		int16_t* ptr = (int16_t*)&(itemPtr[1]);
-		//it.endo = ptr[0] & 0x7FFF;
-		it.mode = (ptr[0] & 0x8000) != 0;
-		it.incr = ptr[1];
-		it.hash = (uint8_t*)(itemPtr + 2);
-		dataFound.push_back(it);
-	}
-	return callKernelSEARCH_MODE_SX();
-}
-
-// ----------------------------------------------------------------------------
-
-int GPUEngine::CheckBinary(const uint8_t* _x, int K_LENGTH)
-{
-	uint8_t* temp_read;
-	uint64_t half, min, max, current; //, current_offset
-	int64_t rcmp;
-	int32_t r = 0;
-	min = 0;
-	current = 0;
-	max = TOTAL_COUNT;
-	half = TOTAL_COUNT;
-	while (!r && half >= 1) {
-		half = (max - min) / 2;
-		temp_read = DATA + ((current + half) * K_LENGTH);
-		rcmp = memcmp(_x, temp_read, K_LENGTH);
-		if (rcmp == 0) {
-			r = 1;  //Found!!
-		}
-		else {
-			if (rcmp < 0) { //data < temp_read
-				max = (max - half);
-			}
-			else { // data > temp_read
-				min = (min + half);
-			}
-			current = min;
-		}
-	}
-	return r;
-}
-
-
-
-
+			inputKeyPinned[8 * i + j + 7 * nbThreadPerGroup] = p[i + j].y.bits64

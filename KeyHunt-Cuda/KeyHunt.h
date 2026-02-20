@@ -35,13 +35,16 @@ class KeyHunt
 
 public:
 
+	// Конструкторы с новыми параметрами
 	KeyHunt(const std::string& inputFile, int compMode, int searchMode, int coinType, bool useGpu, 
 		const std::string& outputFile, bool useSSE, uint32_t maxFound, uint64_t rKey, 
-		const std::string& rangeStart, const std::string& rangeEnd, bool& should_exit);
+		const std::string& rangeStart, const std::string& rangeEnd,
+		int lambdaCount, bool adaptiveMode, int hybridThreshold, bool puzzle71Mode, bool& should_exit);
 
-	KeyHunt(const std::vector<unsigned char>& hashORxpoint, int compMode, int searchMode, int coinType, 
+	KeyHunt(const std::vector<std::vector<unsigned char>>& hashORxpoints, int compMode, int searchMode, int coinType, 
 		bool useGpu, const std::string& outputFile, bool useSSE, uint32_t maxFound, uint64_t rKey, 
-		const std::string& rangeStart, const std::string& rangeEnd, bool& should_exit);
+		const std::string& rangeStart, const std::string& rangeEnd,
+		int lambdaCount, bool adaptiveMode, int hybridThreshold, bool puzzle71Mode, bool& should_exit);
 
 	~KeyHunt();
 
@@ -121,6 +124,12 @@ private:
 	uint8_t* DATA;
 	uint64_t TOTAL_COUNT;
 	uint64_t BLOOM_N;
+
+	// *** НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ MULTI-LAMBDA ***
+	int lambdaCount;           // количество эндоморфизмов (1-4)
+	bool adaptiveMode;         // адаптивный режим
+	int hybridThreshold;       // порог переключения в процентах
+	bool puzzle71Mode;         // режим 71-го пазла
 
 #ifdef WIN64
 	HANDLE ghMutex;

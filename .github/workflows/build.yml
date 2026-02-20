@@ -1,0 +1,82 @@
+name: Build KeyHunt-Cuda with Multi-Lambda
+
+on:
+  push:
+    branches: [ main, feature/multi-lambda ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # позволяет запускать вручную
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Setup CUDA 10.2
+      uses: Jimver/cuda-toolkit@v0.2.11
+      with:
+        cuda: '10.2.89'
+        method: 'network'
+        sub-packages: '["nvcc", "cudart", "cublas", "cudnn"]'
+        use-github-cache: true
+
+    - name: Verify CUDA installation
+      run: |
+        nvcc --version
+        echo "CUDA_PATH: $env:CUDA_PATH"
+
+    - name: Setup MSVC (Visual Studio 2022)
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: x64
+
+    - name: Configure with CMake
+      run: |
+        mkdir build
+        cd build
+        cmake .. -G "Visual Studio 17 2022" -A x64 `
+          -DCMAKE_CUDA_COMPILER="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v10.2/bin/nvcc.exe" `
+          -DCMAKE_CUDA_ARCHITECTURES="86" `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DCMAKE_VERBOSE_MAKEFILE=ON
+
+    - name: Build
+      run: |
+        cd build
+        cmake --build . --config Release --target ALL_BUILD -j 2
+
+    - name: List build output
+      run: |
+        dir build\Release
+        echo "=== Build completed ==="
+
+    - name: Upload executable
+      uses: actions/upload-artifact@v4
+      with:
+        name: KeyHunt-Cuda-MultiLambda-EXE
+        path: |
+          build/Release/*.exe
+          build/Release/*.dll
+        if-no-files-found: error
+        retention-days: 90
+
+    - name: Create release package
+      run: |
+        mkdir package
+        copy build\Release\*.exe package\
+        copy build\Release\*.dll package\ 2>nul || echo "No DLLs found"
+        echo "Multi-Lambda version with 4 endomorphisms" > package\README.txt
+        echo "Built for Puzzle 71" >> package\README.txt
+        echo "Date: %date% %time%" >> package\README.txt
+        7z a KeyHunt-Cuda-MultiLambda.zip .\package\*
+
+    - name: Upload package
+      uses: actions/upload-artifact@v4
+      with:
+        name: KeyHunt-Cuda-MultiLambda-Package
+        path: KeyHunt-Cuda-MultiLambda.zip
+        retention-days: 90

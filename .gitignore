@@ -1,0 +1,38 @@
+# Temporary files
+*.tmp
+*.log
+*.user
+*.suo
+*.sdf
+*.opensdf
+*.opendb
+*.VC.db
+*.VC.VC.opendb
+
+# Build artifacts
+x64/
+Debug/
+Release/
+*.exe
+*.pdb
+*.ilk
+*.obj
+*.cache
+*.deps
+*.recipe
+*.tlog/
+
+# VS files
+.vs/
+*.filters
+*.user
+
+# BinSort output
+BinSort/BinSort.exe
+BinSort/x64/
+BinSort/Debug/
+BinSort/Release/
+
+# Python cache
+__pycache__/
+*.pyc

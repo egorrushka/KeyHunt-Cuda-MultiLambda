@@ -54,6 +54,13 @@ void usage()
 	printf("                                               Where START, END, COUNT are in hex format\n");
 	printf("-r, --rkey Rkey                          : Random key interval in MegaKeys, default is disabled\n");
 	printf("-v, --version                            : Show version\n");
+	
+	// *** НОВЫЕ ПАРАМЕТРЫ ***
+	printf("\nMulti-Lambda options:\n");
+	printf("--lambda-count N                         : Number of endomorphisms (1-4), default=1\n");
+	printf("--adaptive                               : Enable adaptive Kangaroo mode\n");
+	printf("--hybrid-threshold N                      : Hybrid mode threshold in percent (0-100), default=35\n");
+	printf("--puzzle71                               : Enable Puzzle 71 optimized mode (range 0x40000000000000000:0x7FFFFFFFFFFFFFFFF)\n");
 }
 
 // ----------------------------------------------------------------------------
@@ -228,6 +235,12 @@ int main(int argc, char** argv)
 	int searchMode = 0;
 	int coinType = COIN_BTC;
 
+	// *** НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ MULTI-LAMBDA ***
+	int lambdaCount = 1;           // количество эндоморфизмов (1-4)
+	bool adaptiveMode = false;     // адаптивный режим
+	int hybridThreshold = 35;      // порог переключения в процентах
+	bool puzzle71Mode = false;     // режим 71-го пазла
+
 	hashORxpoints.clear();
 
 	// cmd args parsing
@@ -248,6 +261,12 @@ int main(int argc, char** argv)
 	parser.add("", "--range", true);
 	parser.add("-r", "--rkey", true);
 	parser.add("-v", "--version", false);
+	
+	// *** НОВЫЕ ПАРАМЕТРЫ ***
+	parser.add("", "--lambda-count", true);
+	parser.add("", "--adaptive", false);
+	parser.add("", "--hybrid-threshold", true);
+	parser.add("", "--puzzle71", false);
 
 	if (argc == 1) {
 		usage();
@@ -340,6 +359,30 @@ int main(int argc, char** argv)
 			else if (optArg.equals("-v", "--version")) {
 				printf("KeyHunt-Cuda v" RELEASE "\n");
 				return 0;
+			}
+			// *** НОВЫЕ ПАРАМЕТРЫ ***
+			else if (optArg.equals("", "--lambda-count")) {
+				lambdaCount = std::stoi(optArg.arg);
+				if(lambdaCount < 1 || lambdaCount > 4) {
+					printf("Error: lambda-count must be between 1 and 4\n");
+					return -1;
+				}
+			}
+			else if (optArg.equals("", "--adaptive")) {
+				adaptiveMode = true;
+			}
+			else if (optArg.equals("", "--hybrid-threshold")) {
+				hybridThreshold = std::stoi(optArg.arg);
+				if(hybridThreshold < 0 || hybridThreshold > 100) {
+					printf("Error: hybrid-threshold must be between 0 and 100\n");
+					return -1;
+				}
+			}
+			else if (optArg.equals("", "--puzzle71")) {
+				puzzle71Mode = true;
+				// Устанавливаем диапазон для 71-го пазла
+				rangeStart.SetBase16("40000000000000000");
+				rangeEnd.SetBase16("7FFFFFFFFFFFFFFFF");
 			}
 		}
 		catch (std::string err) {
@@ -473,7 +516,7 @@ int main(int argc, char** argv)
 		return -1;
 	}
 
-	if (rangeStart.GetBitLength() <= 0) {
+	if (rangeStart.GetBitLength() <= 0 && !puzzle71Mode) {
 		printf("Error: %s\n", "Invalid start range, provide start range at least, end range would be: start range + 0xFFFFFFFFFFFFULL\n");
 		usage();
 		return -1;
@@ -530,6 +573,18 @@ int main(int argc, char** argv)
 	printf("SSE          : %s\n", useSSE ? "YES" : "NO");
 	printf("RKEY         : %llu Mkeys\n", rKey);
 	printf("MAX FOUND    : %d\n", maxFound);
+	
+	// *** НОВЫЙ ВЫВОД ***
+	if(puzzle71Mode) {
+		printf("PUZZLE71 MODE : YES\n");
+		printf("TARGET ADDRESS: 1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU\n");
+	}
+	printf("LAMBDA COUNT  : %d\n", lambdaCount);
+	printf("ADAPTIVE MODE : %s\n", adaptiveMode ? "YES" : "NO");
+	if(adaptiveMode) {
+		printf("HYBRID THRESHOLD: %d%%\n", hybridThreshold);
+	}
+	
 	if (coinType == COIN_BTC) {
 		switch (searchMode) {
 		case (int)SEARCH_MODE_MA:
@@ -583,11 +638,13 @@ int main(int argc, char** argv)
 		KeyHunt* v;
 		if (inputFile.size() > 0) {
 			v = new KeyHunt(inputFile, compMode, searchMode, coinType, gpuEnable, outputFile, useSSE,
-				maxFound, rKey, rangeStart.GetBase16(), rangeEnd.GetBase16(), should_exit);
+				maxFound, rKey, rangeStart.GetBase16(), rangeEnd.GetBase16(), 
+				lambdaCount, adaptiveMode, hybridThreshold, puzzle71Mode, should_exit);
 		}
 		else if (hashORxpoints.size() > 0) {
 			v = new KeyHunt(hashORxpoints, compMode, searchMode, coinType, gpuEnable, outputFile, useSSE,
-				maxFound, rKey, rangeStart.GetBase16(), rangeEnd.GetBase16(), should_exit);
+				maxFound, rKey, rangeStart.GetBase16(), rangeEnd.GetBase16(),
+				lambdaCount, adaptiveMode, hybridThreshold, puzzle71Mode, should_exit);
 		}
 		else {
 			printf("\n\nNothing to do, exiting\n");
@@ -607,11 +664,13 @@ int main(int argc, char** argv)
 	KeyHunt* v;
 	if (inputFile.size() > 0) {
 		v = new KeyHunt(inputFile, compMode, searchMode, coinType, gpuEnable, outputFile, useSSE,
-			maxFound, rKey, rangeStart.GetBase16(), rangeEnd.GetBase16(), should_exit);
+			maxFound, rKey, rangeStart.GetBase16(), rangeEnd.GetBase16(),
+			lambdaCount, adaptiveMode, hybridThreshold, puzzle71Mode, should_exit);
 	}
 	else if (hashORxpoints.size() > 0) {
 		v = new KeyHunt(hashORxpoints, compMode, searchMode, coinType, gpuEnable, outputFile, useSSE,
-			maxFound, rKey, rangeStart.GetBase16(), rangeEnd.GetBase16(), should_exit);
+			maxFound, rKey, rangeStart.GetBase16(), rangeEnd.GetBase16(),
+			lambdaCount, adaptiveMode, hybridThreshold, puzzle71Mode, should_exit);
 	}
 	else {
 		printf("\n\nNothing to do, exiting\n");
